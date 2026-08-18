@@ -1,0 +1,10 @@
+# Device scripts MUST keep LF endings. A CRLF shebang becomes "#!/bin/sh\r",
+# which busybox reports as a missing interpreter, so a Windows clone would
+# otherwise produce an archive that fails on the handheld.
+*.sh    text eol=lf
+*.c     text eol=lf
+*.h     text eol=lf
+*.json  text eol=lf
+Dockerfile* text eol=lf
+*.md    text eol=lf
+*.ps1   text eol=crlf
