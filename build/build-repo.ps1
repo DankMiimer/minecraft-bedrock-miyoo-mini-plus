@@ -12,7 +12,14 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
-if (Test-Path $Out) { Get-ChildItem $Out -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+# Clear the tree but NEVER touch .git: this directory is the git working tree,
+# and an earlier version of this script deleted the repository's history along
+# with the files it was refreshing. -Force includes hidden directories.
+if (Test-Path $Out) {
+    Get-ChildItem $Out -Force |
+        Where-Object { $_.Name -ne ".git" } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 # --- top-level docs and licences ---------------------------------------------
@@ -46,6 +53,21 @@ Copy-Item (Join-Path $Root "build-repo.ps1")    $bld
 $docs = Join-Path $Out "docs"
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
 Copy-Item (Join-Path $Root "HANDOFF.md") (Join-Path $docs "DEVELOPMENT-NOTES.md")
+
+# Device scripts MUST stay LF. Generated here rather than kept by hand, because
+# a hand-made file in this directory is destroyed on the next rebuild.
+Set-Content -Path (Join-Path $Out ".gitattributes") -Encoding ascii -Value @"
+# A CRLF shebang becomes "#!/bin/sh\r", which busybox reports as a missing
+# interpreter -- so a Windows clone would otherwise build an archive that
+# cannot run on the handheld.
+*.sh    text eol=lf
+*.c     text eol=lf
+*.h     text eol=lf
+*.json  text eol=lf
+Dockerfile* text eol=lf
+*.md    text eol=lf
+*.ps1   text eol=crlf
+"@
 
 Set-Content -Path (Join-Path $Out ".gitignore") -Encoding ascii -Value @"
 # never commit game content or build output

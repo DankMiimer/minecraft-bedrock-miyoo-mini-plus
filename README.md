@@ -79,16 +79,31 @@ App/MinecraftBedrock12/   the entry that appears in your Apps list
 
 Refresh the Apps list, or reboot.
 
-**2. Get your APK.** On a PC, use the
-[mcbedrock-get helper](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/blob/main/GETTING-BEDROCK-APKS.md).
-It signs into your own Google account and downloads your own purchase; it can
-download nothing for an account that does not own the game.
+**2. Get your APK.** You need your own copy — this port ships none and never
+will. On a PC, the **mcbedrock-get** helper signs into your own Google account
+and downloads your own Google Play purchase. It can download nothing for an
+account that does not own the game.
+
+- Full guide: [GETTING-BEDROCK-APKS.md](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/blob/main/GETTING-BEDROCK-APKS.md)
+- Download it from the
+  [releases page](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/releases)
+  — look for `mcbedrock-get-windows-*.zip` and take the **newest** one. It is
+  currently published on a prerelease, so it may not be attached to whichever
+  release GitHub marks "Latest". No version is linked here on purpose: a pinned
+  link goes stale the moment a new helper is published.
+
+It needs Ubuntu under WSL, and the Google account that owns the Android edition.
 
 In the helper, choose:
 
 - **32-bit armeabi-v7a** — the Miyoo Mini Plus is a 32-bit device. The 64-bit
-  `arm64-v8a` build will not run and the installer will tell you so.
+  `arm64-v8a` build will not run, and the installer will say so rather than
+  failing mysteriously.
 - **Version 1.2.20.2** — what this port is tuned for.
+
+Any other way of getting a legitimate `armeabi-v7a` 1.2.20.2 APK works equally
+well; the installer only cares that the file is a Minecraft Bedrock APK with the
+right ABI.
 
 **3. Copy the `.apk` to the card**, into `App/mcpe/apk/` (the card root also
 works).
