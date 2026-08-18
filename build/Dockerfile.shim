@@ -1,0 +1,78 @@
+# Build the fbpresent LD_PRELOAD shim + gather the runtime libs the prebuilt
+# armhf mcpelauncher-client needs that the device lacks (libudev, libevdev) plus
+# Buster's libstdc++. Same Buster/glibc-2.28 ABI as the client and our Mesa.
+#
+# Build context must be the minecraft-bedrock/ dir (so it can read smoke/src/fb.h):
+#   docker build -f client/Dockerfile --target export --output type=local,dest=client/out .
+FROM debian:buster-slim@sha256:bb3dc79fddbca7e8903248ab916bb775c96ec61014b3d02b4f06043b604726dc AS build
+ENV DEBIAN_FRONTEND=noninteractive
+RUN printf '%s\n' \
+      'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20240612T000000Z buster main' \
+      'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20240612T000000Z buster/updates main' \
+      > /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/* && \
+    dpkg --add-architecture armhf && \
+    apt-get -o Acquire::Check-Valid-Until=false update && \
+    apt-get install -y --no-install-recommends \
+      crossbuild-essential-armhf file patchelf \
+      libegl1-mesa-dev:armhf libgles2-mesa-dev:armhf \
+      libudev1:armhf libevdev2:armhf libstdc++6:armhf \
+      libssl1.1:armhf \
+      libatomic1:armhf zlib1g:armhf libpng16-16:armhf \
+      libexpat1:armhf libdrm2:armhf libtinfo6:armhf && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY smoke/src/fb.h            /work/inc/fb.h
+COPY client/src/fbpresent.c    /work/fbpresent.c
+RUN arm-linux-gnueabihf-gcc -shared -fPIC \
+      -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 \
+      -I/work/inc /work/fbpresent.c -o /work/fbpresent.so \
+      -lEGL -lGLESv2 -ldl && \
+    arm-linux-gnueabihf-strip /work/fbpresent.so && \
+    file /work/fbpresent.so
+
+# fbegl: a wrapper libEGL.so.1 that SDL loads instead of Mesa's. It overrides
+# eglSwapBuffers (blit to /dev/fb0) and forwards the rest to librealEGL.so — a
+# copy of Mesa's libEGL with its soname patched, added as a NEEDED dependency.
+COPY smoke/out/lib/libEGL.so.1 /work/mesa-libEGL.so.1
+COPY client/src/fbegl.c        /work/fbegl.c
+RUN arm-linux-gnueabihf-gcc -shared -fPIC \
+      -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 \
+      -Wl,-soname,libEGL.so.1 \
+      -I/work/inc /work/fbegl.c -o /work/wrap-libEGL.so.1 \
+      -lGLESv2 -ldl && \
+    cp /work/mesa-libEGL.so.1 /work/librealEGL.so && \
+    patchelf --set-soname librealEGL.so /work/librealEGL.so && \
+    patchelf --add-needed librealEGL.so /work/wrap-libEGL.so.1 && \
+    arm-linux-gnueabihf-strip /work/wrap-libEGL.so.1 && \
+    echo "== fbegl NEEDED ==" && patchelf --print-needed /work/wrap-libEGL.so.1 && \
+    file /work/wrap-libEGL.so.1 /work/librealEGL.so
+
+# Gather the runtime libs the device is missing, resolving symlinks to real files.
+#
+# The last six exist so the port does NOT depend on OnionOS's own library dirs.
+# Measured 2026-08-18: with only our directories and base /lib on the path, the
+# loader asked for libatomic.so.1, libz.so.1, libpng16.so.16, libexpat.so.1 and
+# libdrm.so.2 (all from .tmp_update/lib/parasyte), and then the game still would
+# not render until libtinfo.so.6 (from .tmp_update/lib/samba) was added -- Mesa
+# dlopens swrast_dri.so at runtime, so ITS dependencies never appear in the
+# client's NEEDED list and only surface when something actually draws.
+# With all six present the game reaches "Renderer: llvmpipe" and presents frames
+# with no Onion library directory on the path at all. That removes the biggest
+# portability risk for other people's Onion builds. They are taken from Debian
+# Buster armhf here rather than copied off a device, so provenance is clean.
+RUN mkdir -p /out/lib /out/egl-wrap && \
+    cp /work/fbpresent.so /out/ && \
+    cp /work/wrap-libEGL.so.1 /out/egl-wrap/libEGL.so.1 && \
+    cp /work/librealEGL.so /out/egl-wrap/librealEGL.so && \
+    for so in libudev.so.1 libevdev.so.2 libstdc++.so.6 libssl.so.1.1 libcrypto.so.1.1 \
+              libatomic.so.1 libz.so.1 libpng16.so.16 libexpat.so.1 libdrm.so.2 libtinfo.so.6; do \
+      src="$(find /lib/arm-linux-gnueabihf /usr/lib/arm-linux-gnueabihf -name "$so" 2>/dev/null | head -1)" && \
+      src="$(readlink -f "$src")" && cp -v "$src" "/out/lib/$so" || \
+      { echo "MISSING $so" >&2; exit 1; }; \
+    done && \
+    echo "== arch check ==" && file /out/lib/*.so* /out/fbpresent.so /out/egl-wrap/*.so* && \
+    ls -la /out /out/lib /out/egl-wrap
+
+FROM scratch AS export
+COPY --from=build /out/ /

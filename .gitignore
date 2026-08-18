@@ -1,0 +1,10 @@
+# never commit game content or build output
+*.apk
+release/
+release-staging/
+repo/
+out*/
+client-*/
+game*/
+*.raw
+*.log

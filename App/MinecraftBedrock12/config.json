@@ -1,0 +1,6 @@
+{
+  "label": "Minecraft Bedrock 1.2",
+  "icon": "/mnt/SDCARD/App/MinecraftBedrock12/icon.png",
+  "description": "Bedrock 1.2.20.2, gamepad controls, HUD on (hold MENU to quit)",
+  "launch": "launch.sh"
+}

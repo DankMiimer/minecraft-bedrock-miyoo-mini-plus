@@ -1,0 +1,111 @@
+# Cross-build a software Mesa with **llvmpipe** (plus softpipe) for the Miyoo
+# Mini Plus (armhf, glibc 2.28, Cortex-A7 x2).
+#
+# Why: softpipe is a single-threaded reference rasterizer (~1-2 FPS here).
+# llvmpipe JITs shaders with LLVM and multi-threads rasterization across both
+# A7 cores -- typically 2-4x softpipe. `-Dgallium-drivers=swrast` with LLVM
+# enabled builds BOTH drivers into the same swrast_dri.so, so the device can
+# A/B them at runtime with GALLIUM_DRIVER=llvmpipe vs =softpipe.
+#
+# The cross-compile wrinkle: meson must query the *target's* llvm-config for
+# --components/--libs, but that is an armhf binary on an x86 build host. We
+# install llvm-7-dev:armhf and wrap its llvm-config in qemu-arm-static.
+#
+# Build:
+#   docker build -f Dockerfile.llvmpipe --target export --output out-llvmpipe .
+FROM debian:buster-slim@sha256:bb3dc79fddbca7e8903248ab916bb775c96ec61014b3d02b4f06043b604726dc AS build
+ENV DEBIAN_FRONTEND=noninteractive
+ARG MESA_VERSION=20.3.5
+ARG MESA_SHA256=
+# Buster ships LLVM 7; Mesa 20.3's llvmpipe floor is LLVM 6.0, so 7 is fine.
+ARG LLVM_VERSION=7
+
+RUN printf '%s\n' \
+      'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20240612T000000Z buster main' \
+      'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20240612T000000Z buster/updates main' \
+      > /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/* && \
+    dpkg --add-architecture armhf && \
+    apt-get -o Acquire::Check-Valid-Until=false update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl xz-utils pkg-config python3 python3-pip python3-setuptools \
+      python3-mako ninja-build bison flex \
+      crossbuild-essential-armhf qemu-user-static \
+      zlib1g-dev:armhf libexpat1-dev:armhf libdrm-dev:armhf \
+      "llvm-${LLVM_VERSION}-dev:armhf" \
+      libncurses5-dev:armhf libedit-dev:armhf libffi-dev:armhf libxml2-dev:armhf && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip3 install --no-cache-dir "meson==0.61.5" && \
+    printf '#!/bin/sh\nexport PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig\nexec pkg-config "$@"\n' \
+      > /usr/local/bin/arm-linux-gnueabihf-pkg-config && \
+    chmod +x /usr/local/bin/arm-linux-gnueabihf-pkg-config
+
+# llvm-config for the armhf target, executed under qemu so meson can query it.
+RUN printf '#!/bin/sh\nexec /usr/bin/qemu-arm-static /usr/lib/llvm-%s/bin/llvm-config "$@"\n' "${LLVM_VERSION}" \
+      > /usr/local/bin/armhf-llvm-config && \
+    chmod +x /usr/local/bin/armhf-llvm-config && \
+    echo "== armhf llvm-config sanity ==" && \
+    /usr/local/bin/armhf-llvm-config --version && \
+    /usr/local/bin/armhf-llvm-config --host-target && \
+    /usr/local/bin/armhf-llvm-config --components | tr ' ' '\n' | grep -E '^(arm|engine|mcjit|native|bitwriter|irreader|instcombine|ipo|scalaropts|transformutils)$' | sort -u
+
+WORKDIR /work
+RUN curl --fail --location --silent --show-error --retry 3 \
+      -o mesa.tar.xz "https://archive.mesa3d.org/older-versions/20.x/mesa-${MESA_VERSION}.tar.xz" && \
+    if [ -n "$MESA_SHA256" ]; then echo "$MESA_SHA256  mesa.tar.xz" | sha256sum -c -; fi && \
+    tar -xf mesa.tar.xz && mv "mesa-${MESA_VERSION}" mesa
+
+COPY cross-armhf-llvm.ini /work/cross-armhf-llvm.ini
+
+# Same minimal surface as the softpipe build (surfaceless EGL + GLES2 + gallium
+# OSMesa, no glx/gbm/vulkan), but with LLVM on. shared-llvm=disabled links only
+# the LLVM components llvmpipe actually needs straight into swrast_dri.so, so
+# there is no 50 MB libLLVM.so to ship or mmap on a 128 MB device.
+RUN cd /work/mesa && meson setup build \
+      --cross-file /work/cross-armhf-llvm.ini \
+      --prefix /opt/mesa \
+      -Dbuildtype=release \
+      -Dgallium-drivers=swrast \
+      -Dvulkan-drivers= \
+      -Ddri-drivers= \
+      -Dplatforms= \
+      -Dglx=disabled \
+      -Degl=true \
+      -Dgles1=disabled -Dgles2=true \
+      -Dgbm=false \
+      -Dllvm=enabled \
+      -Dshared-llvm=disabled \
+      -Dshared-glapi=true \
+      -Dosmesa=gallium \
+      -Dzstd=disabled -Dlibunwind=false -Dvalgrind=false && \
+    echo "== meson config (llvm lines) ==" && \
+    (grep -iE 'llvm|gallium' build/meson-logs/meson-log.txt | tail -40 || true) && \
+    ninja -C build -j"$(nproc)" && ninja -C build install
+
+# --- Smoke harnesses ----------------------------------------------------------
+COPY src /work/src
+ENV PKG_CONFIG_PATH=/opt/mesa/lib/arm-linux-gnueabihf/pkgconfig:/opt/mesa/lib/pkgconfig
+RUN cd /work/src && \
+    CFLAGS="-mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -O2 -I/opt/mesa/include -DMESA_EGL_NO_X11_HEADERS -DEGL_NO_X11" && \
+    LDFLAGS="-L/opt/mesa/lib -L/opt/mesa/lib/arm-linux-gnueabihf -Wl,-rpath-link,/opt/mesa/lib -Wl,-rpath-link,/opt/mesa/lib/arm-linux-gnueabihf" && \
+    arm-linux-gnueabihf-gcc $CFLAGS fbtest_osmesa.c -o /work/fbtest_osmesa $LDFLAGS -lOSMesa -lglapi -lm && \
+    arm-linux-gnueabihf-gcc $CFLAGS fbtest_egl.c    -o /work/fbtest_egl    $LDFLAGS -lEGL -lGLESv2 -lglapi -lm && \
+    arm-linux-gnueabihf-strip /work/fbtest_osmesa /work/fbtest_egl
+
+# --- Assemble the deploy payload ---------------------------------------------
+COPY run-smoke.sh /work/run-smoke.sh
+RUN mkdir -p /out/lib /out/lib/dri && \
+    cp -aL /opt/mesa/lib/arm-linux-gnueabihf/*.so* /out/lib/ 2>/dev/null || true; \
+    cp -aL /opt/mesa/lib/*.so* /out/lib/ 2>/dev/null || true; \
+    cp -aL /opt/mesa/lib/dri/*.so* /out/lib/dri/ 2>/dev/null || true; \
+    cp -aL /opt/mesa/lib/arm-linux-gnueabihf/dri/*.so* /out/lib/dri/ 2>/dev/null || true; \
+    cp -aL /opt/mesa/lib/gallium-pipe/*.so* /out/lib/ 2>/dev/null || true; \
+    cp /work/fbtest_osmesa /work/fbtest_egl /out/ && \
+    cp /work/run-smoke.sh /out/ && chmod +x /out/run-smoke.sh /out/fbtest_* && \
+    arm-linux-gnueabihf-strip --strip-unneeded /out/lib/dri/*.so* 2>/dev/null || true; \
+    echo "== llvmpipe present in swrast_dri.so? ==" && \
+    (strings /out/lib/dri/swrast_dri.so | grep -c llvmpipe || true) && \
+    echo "== assembled payload ==" && ls -laR /out
+
+FROM scratch AS export
+COPY --from=build /out/ /
