@@ -84,17 +84,23 @@ will. On a PC, the **mcbedrock-get** helper signs into your own Google account
 and downloads your own Google Play purchase. It can download nothing for an
 account that does not own the game.
 
-- The helper: [DankMiimer/mcbedrock-get](https://github.com/DankMiimer/mcbedrock-get)
-  — its own repository, where its source and issue tracker live
+- Download it from
+  [its releases page](https://github.com/DankMiimer/mcbedrock-get/releases/latest)
+  — take `mcbedrock-get-windows-*.zip` and unzip it, keeping all the files
+  together in one folder. No version is linked here on purpose: a pinned link
+  goes stale the moment a new helper is published.
+- Its source and issue tracker:
+  [DankMiimer/mcbedrock-get](https://github.com/DankMiimer/mcbedrock-get)
 - Full guide: [GETTING-BEDROCK-APKS.md](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/blob/main/GETTING-BEDROCK-APKS.md)
-- Download it from the
-  [releases page](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/releases)
-  — look for `mcbedrock-get-windows-*.zip` and take the **newest** one. It is
-  currently published on a prerelease, so it may not be attached to whichever
-  release GitHub marks "Latest". No version is linked here on purpose: a pinned
-  link goes stale the moment a new helper is published.
 
-It needs Ubuntu under WSL, and the Google account that owns the Android edition.
+Run it and press the button in **step 1**. It sets itself up, including
+installing a copy of Ubuntu Linux on your PC — it explains what that involves
+and asks first. Expect one Windows administrator prompt and possibly a restart.
+Then press the button again to sign in with the Google account that owns
+Minecraft, on Google's own page.
+
+You need a Windows PC and the Google account that owns the Android edition.
+There is nothing to type into a terminal.
 
 In the helper, choose:
 
