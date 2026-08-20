@@ -84,6 +84,8 @@ will. On a PC, the **mcbedrock-get** helper signs into your own Google account
 and downloads your own Google Play purchase. It can download nothing for an
 account that does not own the game.
 
+- The helper: [DankMiimer/mcbedrock-get](https://github.com/DankMiimer/mcbedrock-get)
+  — its own repository, where its source and issue tracker live
 - Full guide: [GETTING-BEDROCK-APKS.md](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/blob/main/GETTING-BEDROCK-APKS.md)
 - Download it from the
   [releases page](https://github.com/DankMiimer/minecraft-bedrock-handheld-port/releases)
