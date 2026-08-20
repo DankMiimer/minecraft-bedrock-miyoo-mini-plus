@@ -5,6 +5,12 @@ Mini Plus running OnionOS, through the open-source
 [minecraft-linux](https://github.com/minecraft-linux) launcher and a software
 OpenGL stack.
 
+![A Miyoo Mini Plus running Minecraft Bedrock 1.2.20.2 in a savanna world. The
+debug line across the top reads "Linux, FPS: 6.1".](docs/miyoo-mini-plus-bedrock.jpg)
+
+*Not a mock-up: 1.2.20.2 on the device, drawn entirely in software. The
+`FPS: 6.1` in that debug line is the same figure as the 320x240 row below.*
+
 > **No game files are included.** You supply your own official Minecraft Bedrock
 > Android APK, from your own Google Play purchase.
 >
